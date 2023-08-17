@@ -68,7 +68,7 @@ export def "regex join-matches" [regex: string, --separator: string = ""] {
   match ($inp | describe) {
     string => {$inp | regex join-matches from-str $regex --separator $separator},
     _ => {$inp | regex join-matches from-list $regex --separator $separator}
-  } 
+  }
 }
 
 # Main logic of the bulk-rename function
@@ -77,7 +77,12 @@ export def "regex join-matches" [regex: string, --separator: string = ""] {
 # and a `destination` column that contains the result of
 # the join operation.
 # If multiple sources are mapped to the same output, an error is raised.
-def "bulk-rename main" [regex: string, --separator: string = ""] {
+def "bulk-rename main" [
+  regex: string
+  --separator: string = ""
+  --prefix: string = ""
+  --suffix: string = ""
+] {
   # table with in, result
   let input = $in
   let result = $input | regex join-matches $regex --separator $separator
@@ -93,8 +98,10 @@ def "bulk-rename main" [regex: string, --separator: string = ""] {
     return null
   }
 
+  let prefixed_res = $res | update destination {|row| $"($prefix)($row.destination)($suffix)" }
+
   let dest_collisions = (
-    $res
+    $prefixed_res
     | group-by destination
     | transpose destination matchtable
     | where {|x| ($x.matchtable | length) > 1 }
@@ -110,7 +117,7 @@ def "bulk-rename main" [regex: string, --separator: string = ""] {
     }
   }
 
-  $res
+  $prefixed_res
 }
 
 # Given an input `list<string>` apply a regular expression
@@ -119,12 +126,14 @@ def "bulk-rename main" [regex: string, --separator: string = ""] {
 export def "bulk-rename" [
   regex: string, # Regular expression *with* capture group(s).
   --separator: string = "", # Separator that is used to join capture groups.
+  --prefix: string = "", # String that is put before the joined string.
+  --suffix: string = "", # String that is put after  the joined string.
   --interactive, # Show source/destination map and wait for confirmation.
   --dry-run, # Only print source/destination and do not actually rename files.
 ] {
   # As my checks prevent overwriting the source, the classic ^mv
   # should work
-  let mapping = $in | bulk-rename main $regex --separator $separator
+  let mapping = $in | bulk-rename main $regex --separator $separator --prefix $prefix --suffix $suffix
 
   if $dry_run {
     print "Did you remember to:"
@@ -176,6 +185,8 @@ def test_rename_regex [] {
   assert equal (["S01" "S02"] | bulk-rename main '(S\d\d)') [[source destination]; [S01 S01] [S02 S02]]
   assert equal (["0 1" "0 2"] | bulk-rename main '(\d) (\d)') [[source destination]; ['0 1' '01'] ['0 2' '02']]
   assert equal (["0 1" "0 2"] | bulk-rename main --separator "." '(\d) (\d)') [[source destination]; ['0 1' '0.1'] ['0 2' '0.2']]
+  assert equal (["0 1" "0 2"] | bulk-rename main --separator "." --prefix "S" '(\d) (\d)') [[source destination]; ['0 1' 'S0.1'] ['0 2' 'S0.2']]
+  assert equal (["0 1" "0 2"] | bulk-rename main --separator "." --prefix "S" --suffix ".mkv" '(\d) (\d)') [[source destination]; ['0 1' 'S0.1.mkv'] ['0 2' 'S0.2.mkv']]
 }
 
 #[test]
