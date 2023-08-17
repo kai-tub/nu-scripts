@@ -24,10 +24,15 @@ export def "regex join-matches from-str" [regex: string, separator: string = ""]
       }
     }
   }
-  # there is only 1 line
-  $matches | values | each {str join $separator} | match $in {
-    "" => null,
-    [$x] => $x, 
+  # there is only 1 line with multiple columns (or 0)
+  $matches | transpose --ignore-titles | values | each {str join $separator} | match $in {
+    [] => null,
+    [$x] => $x,
+    _ => {
+      error make {
+        msg: $"Should never happen! Please open a bug report with:\ninp: ($inp) and regex: ($regex)"
+      }
+    }
   }
 }
 
@@ -138,8 +143,12 @@ export def "bulk-rename" [
 #[test]
 def test_str_regex_match_join [] {
   assert equal ("abc" | regex join-matches from-str `(\w+)`) "abc"
-  # multiple matches for input!
   assert equal ("abc" | regex join-matches from-str `(\d+)`) null
+  assert equal ( ["E01 - Suffix.mkv"] | regex join-matches from-str '(E\d\d) - Suffix(\.mkv)' ) "E01.mkv"
+}
+
+#[test]
+def test_str_regex_match_join_errors [] {
   assert error {"abc" | regex join-matches from-str `(\w)`}
   # for whatever reason, it does not fail if an integer is given
   assert error {{i: "am record"} | regex join-matches from-str `(\w)`}
