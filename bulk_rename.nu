@@ -146,7 +146,7 @@ export def "bulk-rename" [
   if $interactive {
     print $mapping
     let selection = [yes no] | input list "Does the following result look good?"
-    if selection == no {
+    if $selection != "yes" {
       return null
     }
   }
