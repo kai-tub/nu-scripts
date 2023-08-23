@@ -100,6 +100,7 @@ def "bulk-rename main" [
 
   let prefixed_res = $res | update destination {|row| $"($prefix)($row.destination)($suffix)" }
 
+  # check for collisions
   let dest_collisions = (
     $prefixed_res
     | group-by destination
@@ -118,6 +119,46 @@ def "bulk-rename main" [
   }
 
   $prefixed_res
+}
+
+export def "rename-with-editor" [
+  --separator: string = "\n", # separator that is used between the inputs strings
+  --interactive
+]: list<string> -> nothing {
+  let input = $in
+
+  let t = (mktemp)
+  $input | str join $separator | save --force $t
+
+  # TODO: Add error if EDITOR is not set!
+  if (run-external $env.EDITOR $t | complete | get exit_code) != 0 {
+    make error {
+      msg: $"Editor ($env.EDITOR) returned non-zero exit code!"
+    }
+  }
+
+  let result = open $t --raw | split row $separator
+
+  # TODO: Share this code!
+
+  let res = $input | wrap "source" | merge (
+    $result | wrap "destination"
+  ) | compact "source" "destination"
+
+  if $interactive {
+    print $res
+    let selection = [yes no] | input list "Does the following result look good?"
+    if $selection != "yes" {
+      return null
+    }
+  }
+
+  # TODO: Add tests!
+  $res | each {|r| ^mv $r.source $r.destination }
+  
+  # match (run-external $env.EDITOR $t | complete) {
+  #   {exit_code: $e} if $e != 0 => $"Editor ($env.EDITOR) returned non-zero exit code!"
+  # }
 }
 
 # Given an input `list<string>` apply a regular expression
